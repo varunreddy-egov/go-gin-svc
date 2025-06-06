@@ -9,6 +9,7 @@ import (
 )
 
 var (
+	MessageBrokerType        string // Added
 	KafkaBroker              string
 	KafkaTopic               string
 	KafkaConsumerGroupID     string
@@ -33,6 +34,7 @@ func Init() {
 		log.Println("No .env file found or error loading it, relying on system env vars.")
 	}
 
+	MessageBrokerType = getEnv("MESSAGE_BROKER_TYPE", "kafka") // Added
 	KafkaBroker = getEnv("KAFKA_BROKER", "localhost:9092")
 	KafkaTopic = getEnv("KAFKA_TOPIC", "minio-events")
 	KafkaConsumerGroupID = getEnv("KAFKA_CONSUMER_GROUP_ID", "filestore-antivirus-group")
