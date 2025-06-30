@@ -1,9 +1,7 @@
 package models
 
-type FileEvent struct {
-	EventName string `json:"EventName"`
-	Key       string `json:"Key"`
-	Records   []struct {
+type KafkaEvent struct {
+	Records []struct {
 		S3 struct {
 			Bucket struct {
 				Name string `json:"name"`
