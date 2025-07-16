@@ -44,6 +44,7 @@ func main() {
 
 	// Build DSN
 	dsn := buildPostgresDSN(cfg)
+	log.Println("DSN: ", dsn)
 
 	// Run migrations before anything else
 	runMigrations(dsn, "./migrations")

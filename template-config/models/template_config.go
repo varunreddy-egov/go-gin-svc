@@ -8,7 +8,7 @@ import (
 type TemplateConfig struct {
 	ID           uuid.UUID         `json:"id"`
 	TemplateID   string            `json:"templateId" binding:"required"`
-	TenantID     string            `json:"tenantId" binding:"required"`
+	TenantID     string            `json:"tenantId"`
 	Version      string            `json:"version" binding:"required"`
 	FieldMapping map[string]string `json:"fieldMapping"`
 	APIMapping   []APIMapping      `json:"apiMapping"`

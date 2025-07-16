@@ -18,7 +18,7 @@ func NewTemplateConfigHandler(service *service.TemplateConfigService) *TemplateC
 }
 
 func getTenantIDFromHeader(c *gin.Context) string {
-	return c.GetHeader("tenantid")
+	return c.GetHeader("X-Tenant-ID")
 }
 
 // CreateTemplateConfig handles POST /template-config
@@ -33,6 +33,18 @@ func (h *TemplateConfigHandler) CreateTemplateConfig(c *gin.Context) {
 		return
 	}
 	config.TenantID = getTenantIDFromHeader(c)
+
+	for _, mapping := range config.APIMapping {
+		if mapping.Method != "GET" {
+			c.JSON(http.StatusBadRequest, models.Error{
+				Code:        "BAD_REQUEST",
+				Message:     "Invalid request body",
+				Description: "Only GET method is allowed in API Mappings",
+			})
+			return
+		}
+	}
+
 	dbConfig := models.FromDTO(&config)
 	if err := h.service.Create(&dbConfig); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
@@ -65,6 +77,18 @@ func (h *TemplateConfigHandler) UpdateTemplateConfig(c *gin.Context) {
 		return
 	}
 	config.TenantID = getTenantIDFromHeader(c)
+
+	for _, mapping := range config.APIMapping {
+		if mapping.Method != "GET" {
+			c.JSON(http.StatusBadRequest, models.Error{
+				Code:        "BAD_REQUEST",
+				Message:     "Invalid request body",
+				Description: "Only GET method is allowed in API Mappings",
+			})
+			return
+		}
+	}
+
 	dbConfig := models.FromDTO(&config)
 	if err := h.service.Update(&dbConfig); err != nil {
 		if strings.Contains(err.Error(), "record not found") {
@@ -97,7 +121,7 @@ func (h *TemplateConfigHandler) SearchTemplateConfigs(c *gin.Context) {
 		return
 	}
 	if uuidsStr := c.Query("uuids"); uuidsStr != "" {
-		search.UUIDs = strings.Split(uuidsStr, ",")
+		search.IDs = strings.Split(uuidsStr, ",")
 	}
 	search.TenantID = getTenantIDFromHeader(c)
 	configs, err := h.service.Search(&search)

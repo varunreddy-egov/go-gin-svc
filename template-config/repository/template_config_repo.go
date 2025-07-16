@@ -33,7 +33,7 @@ func (r *TemplateConfigRepository) GetByID(uuid string) (*models.TemplateConfigD
 
 func (r *TemplateConfigRepository) GetByTemplateIDAndVersion(templateID, tenantID, version string) (*models.TemplateConfigDB, error) {
 	var config models.TemplateConfigDB
-	err := r.db.Where("template_id = ? AND tenant_id = ? AND version = ?", templateID, tenantID, version).First(&config).Error
+	err := r.db.Where("templateid = ? AND tenantid = ? AND version = ?", templateID, tenantID, version).First(&config).Error
 	if err != nil {
 		return nil, err
 	}
@@ -42,18 +42,18 @@ func (r *TemplateConfigRepository) GetByTemplateIDAndVersion(templateID, tenantI
 
 func (r *TemplateConfigRepository) Search(search *models.TemplateConfigSearch) ([]models.TemplateConfigDB, error) {
 	var configs []models.TemplateConfigDB
-	query := r.db.Where("tenant_id = ?", search.TenantID)
+	query := r.db.Where("tenantid = ?", search.TenantID)
 
 	if search.TemplateID != "" {
-		query = query.Where("template_id = ?", search.TemplateID)
+		query = query.Where("templateid = ?", search.TemplateID)
 	}
 
 	if search.Version != "" {
 		query = query.Where("version = ?", search.Version)
 	}
 
-	if len(search.UUIDs) > 0 {
-		query = query.Where("id IN ?", search.UUIDs)
+	if len(search.IDs) > 0 {
+		query = query.Where("id IN ?", search.IDs)
 	}
 
 	err := query.Find(&configs).Error
@@ -61,5 +61,5 @@ func (r *TemplateConfigRepository) Search(search *models.TemplateConfigSearch) (
 }
 
 func (r *TemplateConfigRepository) Delete(templateID, tenantID, version string) error {
-	return r.db.Where("template_id = ? AND tenant_id = ? AND version = ?", templateID, tenantID, version).Delete(&models.TemplateConfigDB{}).Error
+	return r.db.Where("templateid = ? AND tenantid = ? AND version = ?", templateID, tenantID, version).Delete(&models.TemplateConfigDB{}).Error
 }

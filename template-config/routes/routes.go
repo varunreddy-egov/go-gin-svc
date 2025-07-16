@@ -13,10 +13,6 @@ import (
 func SetupRoutes(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	router := gin.Default()
 
-	// Request logging middleware
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
-
 	// Initialize dependencies
 	repo := repository.NewTemplateConfigRepository(db)
 	svc := service.NewTemplateConfigService(repo)

@@ -1,7 +1,9 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -11,7 +13,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
-	"github.com/tidwall/gjson"
+	"github.com/oliveagle/jsonpath"
 	"gorm.io/gorm"
 )
 
@@ -21,33 +23,23 @@ type TemplateConfigService struct {
 }
 
 func NewTemplateConfigService(repo *repository.TemplateConfigRepository) *TemplateConfigService {
-	client := resty.New()
-	client.SetTimeout(30 * time.Second)
-
 	return &TemplateConfigService{
 		repo:       repo,
-		httpClient: client,
+		httpClient: resty.New().SetTimeout(30 * time.Second),
 	}
 }
 
 func (s *TemplateConfigService) Create(config *models.TemplateConfigDB) error {
-	existing, err := s.repo.GetByTemplateIDAndVersion(config.TemplateID, config.TenantID, config.Version)
-	if err != nil && err != gorm.ErrRecordNotFound {
+	if existing, err := s.repo.GetByTemplateIDAndVersion(config.TemplateID, config.TenantID, config.Version); err != nil && err != gorm.ErrRecordNotFound {
 		return err
-	}
-	if existing != nil {
-		return fmt.Errorf("template config already exists for templateId: %s, tenantId: %s, version: %s",
-			config.TemplateID, config.TenantID, config.Version)
+	} else if existing != nil {
+		return fmt.Errorf("template config already exists for templateId: %s, tenantId: %s, version: %s", config.TemplateID, config.TenantID, config.Version)
 	}
 
-	config.ID = uuid.New()
 	now := time.Now().Unix()
+	config.ID = uuid.New()
 	config.CreatedTime = now
 	config.LastModifiedTime = now
-	// Optionally set CreatedBy/LastModifiedBy if you have user context
-	// config.CreatedBy = ...
-	// config.LastModifiedBy = ...
-
 	return s.repo.Create(config)
 }
 
@@ -61,9 +53,6 @@ func (s *TemplateConfigService) Update(config *models.TemplateConfigDB) error {
 	config.LastModifiedTime = now
 	config.CreatedTime = existing.CreatedTime
 	config.CreatedBy = existing.CreatedBy
-	// Optionally set LastModifiedBy if you have user context
-	// config.LastModifiedBy = ...
-
 	return s.repo.Update(config)
 }
 
@@ -72,17 +61,13 @@ func (s *TemplateConfigService) Search(search *models.TemplateConfigSearch) ([]m
 }
 
 func (s *TemplateConfigService) Delete(templateID, tenantID, version string) error {
-	// Check if template exists
-	_, err := s.repo.GetByTemplateIDAndVersion(templateID, tenantID, version)
-	if err != nil {
+	if _, err := s.repo.GetByTemplateIDAndVersion(templateID, tenantID, version); err != nil {
 		return err
 	}
-
 	return s.repo.Delete(templateID, tenantID, version)
 }
 
 func (s *TemplateConfigService) Render(request *models.RenderRequest) (*models.RenderResponse, []models.Error) {
-	// Get template config
 	config, err := s.repo.GetByTemplateIDAndVersion(request.TemplateID, request.TenantID, request.Version)
 	if err != nil {
 		return nil, []models.Error{{
@@ -92,7 +77,6 @@ func (s *TemplateConfigService) Render(request *models.RenderRequest) (*models.R
 		}}
 	}
 
-	// Initialize response
 	response := &models.RenderResponse{
 		TemplateID: request.TemplateID,
 		TenantID:   request.TenantID,
@@ -100,18 +84,21 @@ func (s *TemplateConfigService) Render(request *models.RenderRequest) (*models.R
 		Data:       make(map[string]any),
 	}
 
-	// Apply field mappings
+	payloadJSON, _ := json.Marshal(request.Payload)
+	var payloadMap map[string]interface{}
+	_ = json.Unmarshal(payloadJSON, &payloadMap)
+
 	for field, jsonPath := range config.FieldMapping {
-		value := gjson.Get(fmt.Sprintf("%v", request.Payload), jsonPath)
-		if value.Exists() {
-			response.Data[field] = value.Value()
+		if value, err := jsonpath.JsonPathLookup(payloadMap, jsonPath); err == nil {
+			response.Data[field] = value
+			log.Printf("[FieldMapping] %s: %v", field, value)
+		} else {
+			log.Printf("[FieldMapping] Failed for %s (%s): %v", field, jsonPath, err)
 		}
 	}
 
-	// Execute API mappings in parallel
 	if len(config.APIMapping) > 0 {
-		errors := s.executeAPIMappings(config.APIMapping, request.Payload, response)
-		if len(errors) > 0 {
+		if errors := s.executeAPIMappings(config.APIMapping, payloadMap, response); len(errors) > 0 {
 			return nil, errors
 		}
 	}
@@ -119,84 +106,78 @@ func (s *TemplateConfigService) Render(request *models.RenderRequest) (*models.R
 	return response, nil
 }
 
-func (s *TemplateConfigService) executeAPIMappings(apiMappings []models.APIMapping, payload map[string]any, response *models.RenderResponse) []models.Error {
-	var wg sync.WaitGroup
-	errorChan := make(chan models.Error, len(apiMappings))
+func (s *TemplateConfigService) executeAPIMappings(apiMappings []models.APIMapping, payload map[string]interface{}, response *models.RenderResponse) []models.Error {
+	var (
+		wg        sync.WaitGroup
+		errorChan = make(chan models.Error, len(apiMappings))
+	)
 
-	for _, apiMapping := range apiMappings {
+	for _, mapping := range apiMappings {
 		wg.Add(1)
 		go func(mapping models.APIMapping) {
 			defer wg.Done()
-
 			url := s.buildURL(mapping.Endpoint, payload)
+			log.Printf("[APIMapping] Calling: %s", url)
+
 			resp, err := s.httpClient.R().
 				SetHeader("Content-Type", "application/json").
 				Get(url)
-
-			if err != nil {
+			if err != nil || resp.StatusCode() != http.StatusOK {
+				errDesc := err.Error()
+				if resp != nil {
+					errDesc = fmt.Sprintf("HTTP %d: %s", resp.StatusCode(), resp.String())
+				}
 				errorChan <- models.Error{
 					Code:        "API_CALL_FAILED",
-					Message:     "Failed to call external API",
-					Description: err.Error(),
+					Message:     "External API call failed",
+					Description: errDesc,
 					Params:      []string{url, mapping.Method},
 				}
 				return
 			}
 
-			if resp.StatusCode() != http.StatusOK {
-				errorChan <- models.Error{
-					Code:        "API_CALL_FAILED",
-					Message:     "External API returned non-200 status",
-					Description: fmt.Sprintf("HTTP %d: %s", resp.StatusCode(), resp.String()),
-					Params:      []string{url, mapping.Method, fmt.Sprintf("%d", resp.StatusCode())},
-				}
-				return
-			}
-
-			responseData := gjson.Parse(resp.String())
+			var apiResp map[string]interface{}
+			_ = json.Unmarshal(resp.Body(), &apiResp)
 			for field, jsonPath := range mapping.ResponseMapping {
-				value := responseData.Get(jsonPath)
-				if value.Exists() {
-					response.Data[field] = value.Value()
+				if value, err := jsonpath.JsonPathLookup(apiResp, jsonPath); err == nil {
+					response.Data[field] = value
+					log.Printf("[APIResponseMapping] %s: %v", field, value)
+				} else {
+					log.Printf("[APIResponseMapping] Failed for %s (%s): %v", field, jsonPath, err)
 				}
 			}
-		}(apiMapping)
+		}(mapping)
 	}
 
 	wg.Wait()
 	close(errorChan)
 
-	var errors []models.Error
+	errors := make([]models.Error, 0, len(apiMappings))
 	for err := range errorChan {
 		errors = append(errors, err)
 	}
 	return errors
 }
 
-func (s *TemplateConfigService) buildURL(endpoint models.EndpointConfig, payload map[string]any) string {
+func (s *TemplateConfigService) buildURL(endpoint models.EndpointConfig, payload map[string]interface{}) string {
 	url := endpoint.Base + endpoint.Path
 
-	// Replace path parameters
-	for param, jsonPath := range endpoint.PathParams {
-		value := gjson.Get(fmt.Sprintf("%v", payload), jsonPath)
-		if value.Exists() {
-			url = strings.ReplaceAll(url, "{{"+param+"}}", fmt.Sprintf("%v", value.Value()))
+	for param, path := range endpoint.PathParams {
+		if value, err := jsonpath.JsonPathLookup(payload, path); err == nil {
+			url = strings.ReplaceAll(url, "{{"+param+"}}", fmt.Sprintf("%v", value))
 		}
 	}
 
-	// Add query parameters
 	if len(endpoint.QueryParams) > 0 {
-		var queryParams []string
-		for param, jsonPath := range endpoint.QueryParams {
-			value := gjson.Get(fmt.Sprintf("%v", payload), jsonPath)
-			if value.Exists() {
-				queryParams = append(queryParams, fmt.Sprintf("%s=%v", param, value.Value()))
+		var query []string
+		for key, path := range endpoint.QueryParams {
+			if value, err := jsonpath.JsonPathLookup(payload, path); err == nil {
+				query = append(query, fmt.Sprintf("%s=%v", key, value))
 			}
 		}
-		if len(queryParams) > 0 {
-			url += "?" + strings.Join(queryParams, "&")
+		if len(query) > 0 {
+			url += "?" + strings.Join(query, "&")
 		}
 	}
-
 	return url
 }
