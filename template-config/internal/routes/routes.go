@@ -1,10 +1,10 @@
 package routes
 
 import (
-	"template-config/config"
-	"template-config/handlers"
-	"template-config/repository"
-	"template-config/service"
+	"template-config/internal/config"
+	"template-config/internal/handlers"
+	"template-config/internal/repository"
+	"template-config/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -19,7 +19,7 @@ func SetupRoutes(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	handler := handlers.NewTemplateConfigHandler(svc)
 
 	// API routes
-	api := router.Group("/template-config/v1")
+	api := router.Group(cfg.ServerContextPath)
 	{
 		// Template config management routes
 		templateConfig := api.Group("/config")

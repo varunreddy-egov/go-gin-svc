@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
-	"template-config/config"
-	"template-config/db"
-	"template-config/routes"
+	"template-config/internal/config"
+	"template-config/internal/db"
+	"template-config/internal/routes"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -46,8 +46,10 @@ func main() {
 	dsn := buildPostgresDSN(cfg)
 	log.Println("DSN: ", dsn)
 
-	// Run migrations before anything else
-	runMigrations(dsn, "./migrations")
+	if cfg.MigrationEnabled {
+		// Run migrations
+		runMigrations(dsn, cfg.MigrationScriptPath)
+	}
 
 	// Setup database
 	dbConn, err := db.ConnectDSN(dsn)

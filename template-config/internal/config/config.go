@@ -3,13 +3,15 @@ package config
 import (
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
 	// Server configuration
-	HTTPPort string
+	HTTPPort          string
+	ServerContextPath string
 
 	// Database configuration
 	DBHost     string
@@ -18,6 +20,10 @@ type Config struct {
 	DBPassword string
 	DBName     string
 	DBSSLMode  string
+
+	// Migration script configuration
+	MigrationScriptPath string
+	MigrationEnabled    bool
 }
 
 func Load() *Config {
@@ -29,7 +35,8 @@ func Load() *Config {
 
 	return &Config{
 		// Server configuration
-		HTTPPort: getEnv("HTTP_PORT", "8080"),
+		HTTPPort:          getEnv("HTTP_PORT", "8080"),
+		ServerContextPath: getEnv("SERVER_CONTEXT_PATH", "template-config/v1"),
 
 		// Database configuration
 		DBHost:     getEnv("DB_HOST", "localhost"),
@@ -38,11 +45,23 @@ func Load() *Config {
 		DBPassword: getEnv("DB_PASSWORD", "postgres"),
 		DBName:     getEnv("DB_NAME", "template_config"),
 		DBSSLMode:  getEnv("DB_SSL_MODE", "disable"),
+
+		//Migration script configuration
+		MigrationScriptPath: getEnv("MIGRATION_SCRIPT_PATH", "./migrations"),
+		MigrationEnabled:    getEnvAsBool("MIGRATION_ENABLED", false),
 	}
 }
 
 func getEnv(key string, defaultVal string) string {
 	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return defaultVal
+}
+
+func getEnvAsBool(key string, defaultVal bool) bool {
+	valStr := os.Getenv(key)
+	if val, err := strconv.ParseBool(valStr); err == nil {
 		return val
 	}
 	return defaultVal

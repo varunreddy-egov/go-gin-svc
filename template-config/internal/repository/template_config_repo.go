@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"template-config/models"
+	"template-config/internal/models"
 
 	"gorm.io/gorm"
 )

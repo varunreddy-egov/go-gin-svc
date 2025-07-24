@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"template-config/models"
-	"template-config/repository"
+	"template-config/internal/models"
+	"template-config/internal/repository"
 	"time"
 
 	"github.com/go-resty/resty/v2"

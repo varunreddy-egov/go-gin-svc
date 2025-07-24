@@ -3,18 +3,20 @@ package handlers
 import (
 	"net/http"
 	"strings"
-	"template-config/models"
-	"template-config/service"
+	"template-config/internal/models"
+	"template-config/internal/service"
+	"template-config/internal/validation"
 
 	"github.com/gin-gonic/gin"
 )
 
 type TemplateConfigHandler struct {
-	service *service.TemplateConfigService
+	service   *service.TemplateConfigService
+	validator *validation.TemplateValidator
 }
 
 func NewTemplateConfigHandler(service *service.TemplateConfigService) *TemplateConfigHandler {
-	return &TemplateConfigHandler{service: service}
+	return &TemplateConfigHandler{service: service, validator: validation.NewTemplateValidator()}
 }
 
 func getTenantIDFromHeader(c *gin.Context) string {
@@ -34,15 +36,14 @@ func (h *TemplateConfigHandler) CreateTemplateConfig(c *gin.Context) {
 	}
 	config.TenantID = getTenantIDFromHeader(c)
 
-	for _, mapping := range config.APIMapping {
-		if mapping.Method != "GET" {
-			c.JSON(http.StatusBadRequest, models.Error{
-				Code:        "BAD_REQUEST",
-				Message:     "Invalid request body",
-				Description: "Only GET method is allowed in API Mappings",
-			})
-			return
-		}
+	// Validate full template config (fieldMapping, apiMapping, etc.)
+	if err := h.validator.ValidateTemplateConfig(&config); err != nil {
+		c.JSON(http.StatusBadRequest, models.Error{
+			Code:        "BAD_REQUEST",
+			Message:     "Invalid template config",
+			Description: err.Error(),
+		})
+		return
 	}
 
 	dbConfig := models.FromDTO(&config)
@@ -78,15 +79,14 @@ func (h *TemplateConfigHandler) UpdateTemplateConfig(c *gin.Context) {
 	}
 	config.TenantID = getTenantIDFromHeader(c)
 
-	for _, mapping := range config.APIMapping {
-		if mapping.Method != "GET" {
-			c.JSON(http.StatusBadRequest, models.Error{
-				Code:        "BAD_REQUEST",
-				Message:     "Invalid request body",
-				Description: "Only GET method is allowed in API Mappings",
-			})
-			return
-		}
+	// Validate full template config (fieldMapping, apiMapping, etc.)
+	if err := h.validator.ValidateTemplateConfig(&config); err != nil {
+		c.JSON(http.StatusBadRequest, models.Error{
+			Code:        "BAD_REQUEST",
+			Message:     "Invalid template config",
+			Description: err.Error(),
+		})
+		return
 	}
 
 	dbConfig := models.FromDTO(&config)
